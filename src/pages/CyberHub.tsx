@@ -49,7 +49,7 @@ interface AppCard {
 
 const apps: AppCard[] = [
   { id: 'vault', icon: <Shield className="h-6 w-6" />, name: 'AxelleVault', description: 'Password generator, breach checker, phishing detector, IP intelligence and more.', badge: 'live', route: '/vault' },
-  { id: 'securenet', icon: <Radio className="h-6 w-6" />, name: 'Axelle Sentinel', description: 'Network scanner and real-time threat monitor for your connections.', badge: 'live', href: 'https://stalwart-gingersnap-753724.netlify.app/' },
+  { id: 'securenet', icon: <Radio className="h-6 w-6" />, name: 'Axelle Sentinel', description: 'Network scanner and real-time threat monitor for your connections.', badge: 'live', href: 'https://axelle-essiential.vercel.app/' },
   { id: 'darkwatch', icon: <Eye className="h-6 w-6" />, name: 'Axelle Shield', description: 'Dark web monitoring — get alerted if your credentials surface online.', badge: 'soon' },
 ];
 
