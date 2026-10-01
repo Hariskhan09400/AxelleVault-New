@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AxelleVault Cyber Security SaaS</title>
+    <meta property="og:image" content="https://bolt.new/static/og_default.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://bolt.new/static/og_default.png" />
+
+    <!--
+      Speed: Supabase se connection page load ke saath hi ready kar do
+      (DNS + TCP + TLS pehle se ho jaate hain), taaki login / signup ki
+      pehli request ko ye teen round trip alag se na karne padein.
+    -->
+    <link rel="preconnect" href="https://zrsesbenelfltrgalvrj.supabase.co" crossorigin />
+    <link rel="dns-prefetch" href="https://zrsesbenelfltrgalvrj.supabase.co" />
+
+    <!--
+      Sets the theme attribute before React mounts, so the page paints in the
+      right theme on the very first frame instead of flashing dark→light (or
+      light→dark) for a moment on reload. Keep this above main.tsx.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem('axellevault:theme') || 'system';
+          var resolved =
+            stored === 'system'
+              ? (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+              : stored;
+          document.documentElement.setAttribute('data-av-theme', resolved);
+        } catch (e) {
+          document.documentElement.setAttribute('data-av-theme', 'dark');
+        }
+      })();
+    </script>
+    <meta name="theme-color" content="#0A1A2F" />
+    <script type="module" crossorigin src="/assets/index-BjYLO4YS.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-C0FnF6B9.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-react-TS999BkP.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-ui-CWIUsZRs.js">
+    <link rel="modulepreload" crossorigin href="/assets/vendor-supabase-IeDR6dJu.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-VTIsEOdQ.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
