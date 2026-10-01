@@ -43,13 +43,14 @@ interface AppCard {
   name: string;
   description: string;
   badge: 'live' | 'soon';
-  route?: string;
+  route?: string; // app ke andar ka page
+  href?: string; // bahar ka link (same tab me khulta hai, back dabane par wapas aa jaate hain)
 }
 
 const apps: AppCard[] = [
   { id: 'vault', icon: <Shield className="h-6 w-6" />, name: 'AxelleVault', description: 'Password generator, breach checker, phishing detector, IP intelligence and more.', badge: 'live', route: '/vault' },
-  { id: 'securenet', icon: <Radio className="h-6 w-6" />, name: 'Axelle Sentinel ', description: 'Network scanner and real-time threat monitor for your connections.', badge: 'soon' },
-  { id: 'darkwatch', icon: <Eye className="h-6 w-6" />, name: ' Axelle Shield ', description: 'Dark web monitoring — get alerted if your credentials surface online.', badge: 'soon' },
+  { id: 'securenet', icon: <Radio className="h-6 w-6" />, name: 'Axelle Sentinel', description: 'Network scanner and real-time threat monitor for your connections.', badge: 'live', href: 'https://stalwart-gingersnap-753724.netlify.app/' },
+  { id: 'darkwatch', icon: <Eye className="h-6 w-6" />, name: 'Axelle Shield', description: 'Dark web monitoring — get alerted if your credentials surface online.', badge: 'soon' },
 ];
 
 const focusRing = 'focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#e8b74a]';
@@ -111,6 +112,15 @@ export function CyberHub() {
 
   const openExternal = (url: string) => window.open(url, '_blank', 'noopener,noreferrer');
   const initials = user?.email ? user.email.charAt(0).toUpperCase() : 'U';
+
+  // Card ka button: bahar ka link ho to same tab me kholo, warna app ke andar navigate karo
+  const openApp = (app: AppCard) => {
+    if (app.href) {
+      window.location.assign(app.href);
+      return;
+    }
+    if (app.route) navigate(app.route);
+  };
 
   return (
     <div className={`min-h-[100dvh] overflow-x-hidden ${theme.page}`}>
@@ -337,10 +347,10 @@ export function CyberHub() {
                   <h3 className="mt-5 text-lg font-bold">{app.name}</h3>
                   <p className={`mt-2 text-sm leading-6 ${theme.muted}`}>{app.description}</p>
 
-                  {app.badge === 'live' && app.route ? (
+                  {app.badge === 'live' && (app.route || app.href) ? (
                     <button
                       type="button"
-                      onClick={() => navigate(app.route as string)}
+                      onClick={() => openApp(app)}
                       className={`mt-6 inline-flex w-full touch-manipulation items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-semibold transition duration-200 hover:-translate-y-0.5 active:scale-[0.98] motion-reduce:transition-none ${focusRing} ${theme.primaryBtn}`}
                     >
                       Open Tools
