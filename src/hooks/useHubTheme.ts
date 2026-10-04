@@ -60,14 +60,19 @@ if (isBrowser) {
   apply(mode); // runs at import time, before first paint of React tree
 
   // keep multiple browser tabs in sync
-  window.addEventListener('storage', (e) => {
+  const onStorage = (e: StorageEvent) => {
     if (e.key !== KEY) return;
     const next = read();
     if (next === mode) return;
     mode = next;
     apply(next);
     emit();
-  });
+  };
+  window.addEventListener('storage', onStorage);
+
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => window.removeEventListener('storage', onStorage));
+  }
 }
 
 const setMode = (next: Mode) => {

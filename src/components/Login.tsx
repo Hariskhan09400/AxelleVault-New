@@ -483,7 +483,7 @@ const LoginForm = ({ onForgotPassword, onSwitchToSignup }: {
         setError(message);
         showToast('warning', message);
         localStorage.setItem('axellevault.pending_verification_email', trimmedEmail);
-        navigate(`/verify-email?email=${encodeURIComponent(trimmedEmail)}`);
+        navigate(`/verify-email?email=${encodeURIComponent(trimmedEmail)}`, { replace: true });
       } else {
         setError('Wrong email or password. Please try again.');
         showToast('error', 'Login failed. Check your credentials.');
@@ -653,7 +653,12 @@ const SignupForm = ({ onSwitchToLogin }: { onSwitchToLogin: () => void }) => {
   const { signUp } = useAuth();
   const { showToast } = useToast();
   const navigate = useSafeNavigate();
+  const redirectTimer = useRef<number | null>(null);
   const strength = getStrength(password);
+
+  useEffect(() => () => {
+    if (redirectTimer.current !== null) window.clearTimeout(redirectTimer.current);
+  }, []);
 
   // ── Email OTP (signup verification) ──
   // UI (boxes, timer, animation) OtpEmailAnimation component sambhalta hai.
@@ -674,7 +679,7 @@ const SignupForm = ({ onSwitchToLogin }: { onSwitchToLogin: () => void }) => {
     markSession(true);
     showToast('success', 'Email verified! Welcome to AxelleVault.');
     // Thoda delay taaki green tick animation dikh sake
-    setTimeout(() => navigate('/home', { replace: true }), 900);
+    redirectTimer.current = window.setTimeout(() => navigate('/home', { replace: true }), 900);
     return true;
   };
 
@@ -869,6 +874,7 @@ export const Login = ({ onForgotPassword, onToggleMode: _onToggleMode }: LoginPr
         @media (max-width: 1023px) {
           .auth-shell {
             min-height: 100vh;
+            min-height: 100dvh;
           }
 
           .auth-panel {
@@ -913,7 +919,7 @@ export const Login = ({ onForgotPassword, onToggleMode: _onToggleMode }: LoginPr
       </div>
 
       {/* ── RIGHT: Form panel — full height, no card border ── */}
-      <div className="flex flex-col min-h-screen lg:min-h-0">
+      <div className="flex flex-col min-h-[100dvh] lg:min-h-0">
 
         {/* Mobile top brand strip */}
         <div className="flex lg:hidden items-center gap-2 px-5 pt-6 pb-2">

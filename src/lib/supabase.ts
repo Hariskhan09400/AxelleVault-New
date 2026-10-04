@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { fetchWithTimeout } from './network';
 
 const supabaseUrl = 'https://zrsesbenelfltrgalvrj.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inpyc2VzYmVuZWxmbHRyZ2FsdnJqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQ1NTM1ODcsImV4cCI6MjA5MDEyOTU4N30.J9gt7grtq0Lsnou3tdLjetv7RpO3bjUgwPtjfda7lQk';
@@ -6,6 +7,7 @@ const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYm
 export const hasSupabaseEnv = true;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { fetch: fetchWithTimeout },
   auth: {
     autoRefreshToken: true,       // ✅ token auto refresh hoga
     persistSession: true,          // ✅ session browser mein save rahega
@@ -29,15 +31,18 @@ export const logToolUsage = async (
   userId: string,
   toolName: string,
   inputData: string,
-  result: string
+  result: string,
+  signal?: AbortSignal,
 ) => {
   if (!userId) return;
-  await supabase.from('tool_usage_history').insert({
+  const query = supabase.from('tool_usage_history').insert({
     user_id: userId,
     tool_name: toolName,
     input_data: inputData,
     result,
   });
+  const { error } = await (signal ? query.abortSignal(signal) : query);
+  if (error) console.warn('[Supabase] logToolUsage warning:', error.message);
 };
 
 // ─── Notes ─────────────────────────────────────────────────

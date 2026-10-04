@@ -89,7 +89,7 @@ export const Settings = () => {
       await signOut();
       navigate('/login', { replace: true });
     } catch {
-      showToast('error', 'Network problem. Please try again.');
+      showToast('error', 'Password update timed out or failed. Check your connection and try again.');
     } finally {
       setPwBusy(false);
     }
@@ -114,7 +114,7 @@ export const Settings = () => {
       setNewEmail('');
       setEmailPassword('');
     } catch {
-      showToast('error', 'Network problem. Please try again.');
+      showToast('error', 'Email update timed out or failed. Check your connection and try again.');
     } finally {
       setEmailBusy(false);
     }
@@ -130,7 +130,7 @@ export const Settings = () => {
         return;
       }
       showToast('success', 'Account deleted.');
-      navigate('/signup', { replace: true });
+      navigate('/login', { replace: true });
     } catch {
       showToast('error', 'Network problem. Please try again.');
     } finally {

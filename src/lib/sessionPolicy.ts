@@ -47,7 +47,7 @@ if (typeof window !== 'undefined' && !(window as any).__avSessionGuard) {
 
   enforceSessionLimit(); // app khulte hi check
 
-  supabase.auth.onAuthStateChange((event, session) => {
+  const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
     try {
       // Manual logout: timer saaf
       if (event === 'SIGNED_OUT') { localStorage.removeItem(LOGIN_AT_KEY); return; }
@@ -58,8 +58,18 @@ if (typeof window !== 'undefined' && !(window as any).__avSessionGuard) {
     } catch { /* ignore */ }
   });
 
-  setInterval(enforceSessionLimit, 60 * 1000); // tab khula ho tab bhi har minute check
-  document.addEventListener('visibilitychange', () => {
+  const interval = window.setInterval(enforceSessionLimit, 60 * 1000); // tab khula ho tab bhi har minute check
+  const onVisibilityChange = () => {
     if (!document.hidden) enforceSessionLimit(); // phone me wapas aate hi check
-  });
+  };
+  document.addEventListener('visibilitychange', onVisibilityChange);
+
+  if (import.meta.hot) {
+    import.meta.hot.dispose(() => {
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      subscription.unsubscribe();
+      delete (window as any).__avSessionGuard;
+    });
+  }
 }

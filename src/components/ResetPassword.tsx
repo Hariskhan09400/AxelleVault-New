@@ -35,8 +35,13 @@ export const ResetPassword = () => {
   const [error, setError] = useState('');
   const [isRecoveryTokenValid, setIsRecoveryTokenValid] = useState<boolean | null>(null);
   const validRef = useRef(false);
+  const redirectTimer = useRef<number | null>(null);
   const navigate = useSafeNavigate();
   const reduce = useReducedMotion();
+
+  useEffect(() => () => {
+    if (redirectTimer.current !== null) window.clearTimeout(redirectTimer.current);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -172,7 +177,7 @@ export const ResetPassword = () => {
     setDone(true);
     await supabase.auth.signOut({ scope: 'global' });
     setLoading(false);
-    setTimeout(() => navigate('/login', { replace: true }), 2500);
+    redirectTimer.current = window.setTimeout(() => navigate('/login', { replace: true }), 2500);
   };
 
   const view = {

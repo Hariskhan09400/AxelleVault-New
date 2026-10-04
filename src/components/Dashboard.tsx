@@ -875,7 +875,7 @@ export const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[var(--av-bg)]">
+      <div className="flex min-h-[100dvh] items-center justify-center bg-[var(--av-bg)]">
         <div className="flex flex-col items-center gap-5">
           <div
             className="relative flex h-14 w-14 items-center justify-center rounded-2xl"
@@ -937,14 +937,14 @@ export const Dashboard = () => {
   const telegramUrl = 'https://t.me/Axelle_vault';
 
   return (
-    <div className="min-h-screen bg-[var(--av-bg)] text-[var(--av-text)] antialiased">
+    <div className="min-h-[100dvh] bg-[var(--av-bg)] text-[var(--av-text)] antialiased">
       {/* Ambient light: one warm source top-left, one cool source bottom-right. */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -left-40 -top-40 h-[520px] w-[520px] rounded-full blur-[130px]" style={{ background: 'var(--av-glow-a)' }} />
         <div className="absolute bottom-0 right-0 h-[420px] w-[420px] rounded-full blur-[130px]" style={{ background: 'var(--av-glow-b)' }} />
       </div>
 
-      <div className="relative flex h-screen overflow-hidden">
+      <div className="relative flex h-[100dvh] overflow-hidden">
 
         {/* ── Sidebar ── */}
         <aside

@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { Globe, AlertTriangle, CheckCircle, Search, Shield, ExternalLink, Activity } from 'lucide-react';
 import { supabase, logToolUsage } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import { useAbortableFetch, useRequestSignal } from '../../hooks/useAbortableFetch';
+import { delay } from '../../lib/network';
 
 interface VTStats {
   malicious: number;
@@ -30,6 +32,8 @@ interface ScanResult {
 
 export const URLScanner = () => {
   const { user } = useAuth();
+  const request = useAbortableFetch();
+  const getRequestSignal = useRequestSignal();
   const [url, setUrl] = useState('');
   const [result, setResult] = useState<ScanResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -41,7 +45,7 @@ export const URLScanner = () => {
     const formData = new URLSearchParams();
     formData.append('url', targetUrl);
 
-    const res = await fetch('https://www.virustotal.com/api/v3/urls', {
+    const res = await request('https://www.virustotal.com/api/v3/urls', {
       method: 'POST',
       headers: {
         'x-apikey': apiKey,
@@ -59,8 +63,8 @@ export const URLScanner = () => {
   const pollVTAnalysis = async (apiKey: string, analysisId: string, maxWait = 20000): Promise<any> => {
     const start = Date.now();
     while (Date.now() - start < maxWait) {
-      await new Promise(r => setTimeout(r, 3000));
-      const res = await fetch(`https://www.virustotal.com/api/v3/analyses/${analysisId}`, {
+      await delay(3000, getRequestSignal());
+      const res = await request(`https://www.virustotal.com/api/v3/analyses/${analysisId}`, {
         headers: { 'x-apikey': apiKey },
       });
       if (!res.ok) throw new Error(`VT poll failed: ${res.status}`);
@@ -139,7 +143,7 @@ export const URLScanner = () => {
       if (safeBrowsingKey) {
         try {
           setLoadingStep('Checking Google Safe Browsing...');
-          const res = await fetch(
+          const res = await request(
             `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${safeBrowsingKey}`,
             {
               method: 'POST',
@@ -162,8 +166,10 @@ export const URLScanner = () => {
             recommendations.push('Do not visit this URL — it has been flagged as harmful');
             scanSource = 'combined';
           }
-        } catch (_) {
-          // Safe Browsing optional — silently skip
+        } catch (error) {
+          if ((error as Error).name === 'AbortError') throw error;
+          issues.push(`Google Safe Browsing check failed: ${(error as Error).message}`);
+          recommendations.push('Retry the scan when the threat service is available');
         }
       }
 
@@ -216,6 +222,7 @@ export const URLScanner = () => {
             scanSource = scanSource === 'combined' ? 'combined' : 'virustotal';
           }
         } catch (vtErr: any) {
+          if (vtErr?.name === 'AbortError') throw vtErr;
           issues.push(`VirusTotal check failed: ${vtErr.message}`);
           recommendations.push('Add VITE_VIRUSTOTAL_API_KEY to .env for full scanning');
         }
@@ -223,7 +230,11 @@ export const URLScanner = () => {
         recommendations.push('Add VITE_VIRUSTOTAL_API_KEY to your .env for deep threat scanning');
       }
 
-    } catch (_) {
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        setLoading(false);
+        return;
+      }
       issues.push('Invalid URL format');
       recommendations.push('Ensure the URL is properly formatted (e.g. https://example.com)');
     }
@@ -255,19 +266,26 @@ export const URLScanner = () => {
 
     // Supabase logging (same as before)
     if (user) {
-      await logToolUsage(user.id, 'url-scanner', url, JSON.stringify(scanResult));
-      await supabase.from('security_logs').insert({
-        user_id: user.id,
-        event_type: 'url_scan',
-        event_data: {
-          url: url.toLowerCase(),
+      try {
+        await logToolUsage(user.id, 'url-scanner', url, JSON.stringify(scanResult), getRequestSignal());
+        const { error } = await supabase.from('security_logs').insert({
+          user_id: user.id,
+          event_type: 'url_scan',
+          event_data: {
+            url: url.toLowerCase(),
+            risk_level: riskLevel,
+            issues_count: issues.length,
+            vt_malicious: vtStats?.malicious ?? null,
+            scan_source: scanSource,
+          },
           risk_level: riskLevel,
-          issues_count: issues.length,
-          vt_malicious: vtStats?.malicious ?? null,
-          scan_source: scanSource,
-        },
-        risk_level: riskLevel,
-      });
+        }).abortSignal(getRequestSignal());
+        if (error) console.error('[URLScanner] security log failed:', error.message);
+      } catch (error) {
+        if ((error as Error).name !== 'AbortError') {
+          console.error('[URLScanner] logging failed:', error);
+        }
+      }
     }
 
     setLoading(false);

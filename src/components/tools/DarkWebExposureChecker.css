@@ -51,6 +51,7 @@
 /* ── Root Container ── */
 .dwec-root {
   min-height: 100vh;
+  min-height: 100dvh;
   background-color: var(--bg-void);
   font-family: var(--font-body);
   color: var(--text-primary);

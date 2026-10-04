@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useAuth } from '../hooks/useAuth';
@@ -23,6 +23,9 @@ import {
 
 const TELEGRAM_URL = 'https://t.me/Axelle_vault';
 const WHATSAPP_URL = `https://wa.me/917208428589?text=${encodeURIComponent('Hi, I found you on AxelleVault.')}`;
+const CyberHubExtras = lazy(() =>
+  import('./CyberHubExtras').then((module) => ({ default: module.CyberHubExtras }))
+);
 
 const heroStats = [
   { value: '5+', label: 'Security tools' },
@@ -264,6 +267,16 @@ export function CyberHub() {
             ))}
           </div>
         </section>
+
+        <Suspense
+          fallback={
+            <div className="min-h-24 px-5 py-10 text-center text-sm text-[#6f6858] dark:text-[#a1aec2]" aria-live="polite">
+              Loading security resources…
+            </div>
+          }
+        >
+          <CyberHubExtras isDark={isDark} />
+        </Suspense>
 
         <section id="offer" className={`scroll-mt-20 border-t px-5 py-20 sm:px-8 sm:py-28 ${theme.divider}`}>
           <div className="mx-auto max-w-7xl">

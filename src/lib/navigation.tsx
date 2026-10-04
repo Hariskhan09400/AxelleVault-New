@@ -39,7 +39,7 @@ export function useSafeNavigate() {
         return;
       }
 
-      if (!options?.replace && options?.state === undefined && sameLocation(to, location.pathname, location.search, location.hash)) {
+      if (sameLocation(to, location.pathname, location.search, location.hash)) {
         return;
       }
 
@@ -55,7 +55,7 @@ export function SafeLink({ onClick, state, target, reloadDocument, to, ...props 
   const handleClick: MouseEventHandler<HTMLAnchorElement> = (event) => {
     onClick?.(event);
     if (shouldKeepBrowserNavigation(event, target, reloadDocument)) return;
-    if (state === undefined && sameLocation(to, location.pathname, location.search, location.hash)) event.preventDefault();
+    if (sameLocation(to, location.pathname, location.search, location.hash)) event.preventDefault();
   };
 
   return <Link {...props} reloadDocument={reloadDocument} state={state} target={target} to={to} onClick={handleClick} />;
@@ -67,7 +67,7 @@ export function SafeNavLink({ onClick, state, target, reloadDocument, to, ...pro
   const handleClick: MouseEventHandler<HTMLAnchorElement> = (event) => {
     onClick?.(event);
     if (shouldKeepBrowserNavigation(event, target, reloadDocument)) return;
-    if (state === undefined && sameLocation(to, location.pathname, location.search, location.hash)) event.preventDefault();
+    if (sameLocation(to, location.pathname, location.search, location.hash)) event.preventDefault();
   };
 
   return <NavLink {...props} reloadDocument={reloadDocument} state={state} target={target} to={to} onClick={handleClick} />;

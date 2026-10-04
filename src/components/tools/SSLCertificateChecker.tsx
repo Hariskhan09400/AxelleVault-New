@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { supabase, logToolUsage } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import { useAbortableFetch } from '../../hooks/useAbortableFetch';
 
 export const SSLCertificateChecker = () => {
+  const request = useAbortableFetch();
   const { user } = useAuth();
   const [host, setHost] = useState('');
   const [info, setInfo] = useState<any>(null);
@@ -14,7 +16,7 @@ export const SSLCertificateChecker = () => {
     setInfo(null);
 
     try {
-      const response = await fetch(`https://api.securitytrails.com/v1/ssl/${encodeURIComponent(host)}`, {
+      const response = await request(`https://api.securitytrails.com/v1/ssl/${encodeURIComponent(host)}`, {
         headers: { 'APIKEY': import.meta.env.VITE_SSL_API_KEY || '' }
       });
       if (!response.ok) throw new Error(`Error ${response.status}`);

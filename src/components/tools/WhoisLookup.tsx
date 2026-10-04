@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Globe, Info, Search, Calendar, MapPin, Building, Sun, Moon } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import { useRequestSignal } from '../../hooks/useAbortableFetch';
 
 interface WhoisResult {
   domain: string;
@@ -14,6 +15,7 @@ interface WhoisResult {
 
 export const WhoisLookup = ({ isDark }: { isDark: boolean }) => {
   const { user } = useAuth();
+  const getRequestSignal = useRequestSignal();
   const [domain, setDomain] = useState('');
   const [result, setResult] = useState<WhoisResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -65,12 +67,13 @@ export const WhoisLookup = ({ isDark }: { isDark: boolean }) => {
     setResult(whoisResult);
 
     if (user) {
-      await supabase.from('security_logs').insert({
+      const { error } = await supabase.from('security_logs').insert({
         user_id: user.id,
         event_type: 'whois_lookup',
         event_data: { domain: domain.toLowerCase() },
         risk_level: 'low',
-      });
+      }).abortSignal(getRequestSignal());
+      if (error) console.error('[WhoisLookup] security log failed:', error.message);
     }
 
     setLoading(false);

@@ -1,5 +1,5 @@
 import { createContext, useEffect, useState, ReactNode, useRef } from 'react';
-import { AuthError, User } from '@supabase/supabase-js';
+import { AuthError, PostgrestError, User } from '@supabase/supabase-js';
 import { hasSupabaseEnv, supabase } from '../lib/supabase';
 import { createToken, getDeviceId, hashToken, sanitizeEmail } from '../lib/authSecurity';
 import { rememberAccount } from '../lib/savedAccounts';
@@ -128,10 +128,10 @@ export interface AuthContextType {
   signOut: (options?: { everywhere?: boolean; rememberLogin?: boolean }) => Promise<void>;
   requestPasswordReset: (email: string) => Promise<{ error: AuthError | null }>;
   refreshProfile: () => Promise<void>;
-  updateProfile: (fullName: string) => Promise<{ error: AuthError | null }>;
+  updateProfile: (fullName: string) => Promise<{ error: AuthError | PostgrestError | null }>;
   updateEmail: (newEmail: string, currentPassword: string) => Promise<{ error: AuthError | null }>;
   changePassword: (oldPassword: string, newPassword: string) => Promise<{ error: AuthError | null }>;
-  deleteAccount: () => Promise<{ error: AuthError | null }>;
+  deleteAccount: () => Promise<{ error: AuthError | PostgrestError | null }>;
   userRole: string | null;
   isAdmin: boolean;
 }
@@ -146,8 +146,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [userRole, setUserRole] = useState<string | null>(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const isSigningUp = useRef(false);
+  const userRef = useRef<User | null>(null);
   // Same user ka kaam do baar na ho (initSession + listener + tab focus par SIGNED_IN)
   const loadedUser = useRef<{ id: string; promise: Promise<void> } | null>(null);
+
+  const applyUser = (nextUser: User | null) => {
+    userRef.current = nextUser;
+    setUser((current) => current?.id === nextUser?.id ? current : nextUser);
+  };
 
   const applyProfile = (data: UserLoginDetail | null) => {
     setProfile(data);
@@ -181,7 +187,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const clearAllState = () => {
     loadedUser.current = null;
-    setUser(null);
+    applyUser(null);
     setProfile(null);
     setUserRole(null);
     setIsAdmin(false);
@@ -204,10 +210,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     const promise = (async () => {
       const row = await syncUserEmailVerification(u.id, u);
       if (row) {
-        setUser(u);
+        applyUser(u);
         applyProfile(row);
       } else {
-        setUser(u);
+        applyUser(u);
         await fetchProfile(u.id);
       }
     })();
@@ -224,10 +230,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     let isMounted = true;
+    const deferredTasks = new Set<number>();
 
     const initSession = async () => {
       try {
-        const { data } = await supabase.auth.getSession();
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
         const sessionUser = data?.session?.user ?? null;
         if (!isMounted) return;
 
@@ -246,6 +254,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
     initSession();
 
+    const syncVisibleSession = async () => {
+      if (!isMounted || document.visibilityState === 'hidden' || isSigningUp.current) return;
+
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        if (!isMounted) return;
+
+        const sessionUser = data?.session?.user ?? null;
+        if (sessionUser) {
+          if (userRef.current?.id !== sessionUser.id) {
+            setLoading(true);
+            await loadUser(sessionUser);
+          }
+        } else {
+          clearAllState();
+        }
+      } catch (err) {
+        console.error('[Auth] visibility session sync error:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    document.addEventListener('visibilitychange', syncVisibleSession);
+
     // IMPORTANT: is callback ke andar seedha supabase call `await` karne se auth lock
     // deadlock ho jaata hai (yahi "kabhi fast kabhi 5 sec" ka bada reason tha).
     // Isliye kaam setTimeout(0) se callback ke bahar nikal diya hai.
@@ -262,37 +296,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       // user load hone se pehle hi login page ek second ke liye dikh jaata tha (flash).
       if (event === 'INITIAL_SESSION') return;
 
-      setTimeout(async () => {
-        if (!isMounted) return;
+      if (event === 'SIGNED_IN' && session?.user?.id === userRef.current?.id) {
+        return;
+      }
 
-        if (event === 'SIGNED_IN' && isSigningUp.current) {
-          isSigningUp.current = false;
-          await supabase.auth.signOut({ scope: 'global' });
-          clearAllStorage();
-          clearAllState();
-          setLoading(false);
-          return;
-        }
+      const task = window.setTimeout(() => {
+        deferredTasks.delete(task);
+        void (async () => {
+          try {
+            if (!isMounted) return;
 
-        if (event === 'SIGNED_IN' && session?.user) {
-          await loadUser(session.user);
-        }
+            if (event === 'SIGNED_IN' && isSigningUp.current) {
+              isSigningUp.current = false;
+              await supabase.auth.signOut({ scope: 'global' });
+              clearAllStorage();
+              clearAllState();
+              return;
+            }
 
-        if (event === 'TOKEN_REFRESHED' && session?.user) {
-          setUser(session.user);
-        }
+            if (event === 'SIGNED_IN' && session?.user) {
+              await loadUser(session.user);
+            }
 
-        setLoading(false);
+            if (event === 'TOKEN_REFRESHED' && session?.user) {
+              if (userRef.current?.id !== session.user.id) applyUser(session.user);
+            }
+          } catch (err) {
+            console.error('[Auth] auth state update error:', err);
+          } finally {
+            if (isMounted) setLoading(false);
+          }
+        })();
       }, 0);
+      deferredTasks.add(task);
     });
-
-    const timeout = setTimeout(() => {
-      if (isMounted) setLoading(false);
-    }, 6000);
 
     return () => {
       isMounted = false;
-      clearTimeout(timeout);
+      document.removeEventListener('visibilitychange', syncVisibleSession);
+      deferredTasks.forEach((task) => window.clearTimeout(task));
+      deferredTasks.clear();
       subscription.unsubscribe();
     };
   }, []);
@@ -482,7 +525,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
 
     // Profile load onAuthStateChange (SIGNED_IN) khud kar deta hai — yahan dobara await nahi
-    setUser(data.user);
+    applyUser(data.user);
     return { error: null };
   };
 
@@ -535,46 +578,54 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const updateEmail = async (newEmail: string, currentPassword: string) => {
     if (!user) return { error: makeAuthError('Not authenticated') };
 
-    const normalizedNewEmail = sanitizeEmail(newEmail);
+    try {
+      const normalizedNewEmail = sanitizeEmail(newEmail);
 
-    if (normalizedNewEmail === sanitizeEmail(user.email ?? '')) {
-      return { error: makeAuthError('This is already your current email.') };
+      if (normalizedNewEmail === sanitizeEmail(user.email ?? '')) {
+        return { error: makeAuthError('This is already your current email.') };
+      }
+
+      // Password dobara maango; same-user SIGNED_IN is ignored by the auth listener.
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: user.email ?? '',
+        password: currentPassword,
+      });
+
+      if (verifyError) {
+        return { error: makeAuthError('Current password is incorrect.') };
+      }
+
+      const { error } = await supabase.auth.updateUser(
+        { email: normalizedNewEmail },
+        { emailRedirectTo: `${window.location.origin}/login?verified=true` },
+      );
+
+      return { error: error ?? null };
+    } catch (error) {
+      console.error('[Auth] updateEmail exception:', error);
+      return { error: makeAuthError('Could not update your email. Check your connection and try again.') };
     }
-
-    // Password dobara maango, taaki koi khali chhode hue session se email hijack na kar sake
-    const { error: verifyError } = await supabase.auth.signInWithPassword({
-      email: user.email ?? '',
-      password: currentPassword,
-    });
-
-    if (verifyError) {
-      return { error: makeAuthError('Current password is incorrect.') };
-    }
-
-    const { error } = await supabase.auth.updateUser(
-      { email: normalizedNewEmail },
-      { emailRedirectTo: `${window.location.origin}/login?verified=true` },
-    );
-
-    return { error: error ?? null };
   };
 
   const changePassword = async (oldPassword: string, newPassword: string) => {
     if (!user) return { error: makeAuthError('Not authenticated') };
 
-    const { error: verifyError } = await supabase.auth.signInWithPassword({
-      email: user.email ?? '',
-      password: oldPassword,
-    });
+    try {
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: user.email ?? '',
+        password: oldPassword,
+      });
 
-    if (verifyError) return { error: verifyError };
+      if (verifyError) return { error: makeAuthError('Current password is incorrect. Please try again.') };
 
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
-    if (!error) {
-      await revokeUserSessions(user.id);
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
+      if (!error) await revokeUserSessions(user.id);
+
+      return { error: error ?? null };
+    } catch (error) {
+      console.error('[Auth] changePassword exception:', error);
+      return { error: makeAuthError('Could not change your password. Check your connection and try again.') };
     }
-
-    return { error: error ?? null };
   };
 
   const deleteAccount = async () => {

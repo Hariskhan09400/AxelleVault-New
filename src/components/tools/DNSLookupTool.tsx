@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { supabase, logToolUsage } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import { useAbortableFetch, useRequestSignal } from '../../hooks/useAbortableFetch';
 
 export const DNSLookupTool = () => {
   const { user } = useAuth();
@@ -8,6 +9,8 @@ export const DNSLookupTool = () => {
   const [result, setResult] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const request = useAbortableFetch();
+  const getRequestSignal = useRequestSignal();
 
   const lookup = async () => {
     setError('');
@@ -15,12 +18,15 @@ export const DNSLookupTool = () => {
     setLoading(true);
 
     try {
-      const response = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=ANY`);
+      const response = await request(`https://dns.google/resolve?name=${encodeURIComponent(domain)}&type=ANY`);
       const data = await response.json();
       setResult(data);
       if (user) {
         await logToolUsage(user.id, 'dns-lookup', domain, JSON.stringify(data).slice(0, 2000));
-        await supabase.from('security_logs').insert({ user_id: user.id, event_type: 'dns_lookup', event_data: { domain }, risk_level: 'low' });
+        const { error: logError } = await supabase.from('security_logs')
+          .insert({ user_id: user.id, event_type: 'dns_lookup', event_data: { domain }, risk_level: 'low' })
+          .abortSignal(getRequestSignal());
+        if (logError) console.error('[DNSLookupTool] security log failed:', logError.message);
       }
     } catch (err) {
       setError((err as Error).message || 'DNS lookup failed');

@@ -5,6 +5,8 @@ import {
   ChevronDown, ChevronUp, Loader2, Wifi, Database,
   FileText, List, History, Download
 } from 'lucide-react';
+import { useAbortableFetch, useRequestSignal } from '../../hooks/useAbortableFetch';
+import { delay } from '../../lib/network';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -170,6 +172,8 @@ const RiskBar = ({ label, value, max = 100 }: { label: string; value: number; ma
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export const IPIntelligence = () => {
+  const request = useAbortableFetch();
+  const getRequestSignal = useRequestSignal();
   const [ip, setIp]                 = useState('');
   const [loading, setLoading]       = useState(false);
   const [activeTab, setActiveTab]   = useState<ActiveTab>('overview');
@@ -230,13 +234,13 @@ export const IPIntelligence = () => {
 
     try {
       // Primary: ipwho.is — free, HTTPS, no API key needed
-      const res = await fetch(`https://ipwho.is/${encodeURIComponent(target)}`);
+      const res = await request(`https://ipwho.is/${encodeURIComponent(target)}`);
       const d = await res.json();
 
       if (!d.success) {
         // Fallback: ipapi.co — also free + HTTPS
         try {
-          const res2 = await fetch(`https://ipapi.co/${encodeURIComponent(target)}/json/`);
+          const res2 = await request(`https://ipapi.co/${encodeURIComponent(target)}/json/`);
           const d2 = await res2.json();
           if (d2.error) {
             setError(d2.reason || 'Invalid IP or domain');
@@ -326,7 +330,7 @@ export const IPIntelligence = () => {
 
   const getMyIP = async () => {
     try {
-      const r = await fetch('https://api.ipify.org?format=json');
+      const r = await request('https://api.ipify.org?format=json');
       const d = await r.json();
       setIp(d.ip);
       handleLookup(d.ip);
@@ -341,14 +345,16 @@ export const IPIntelligence = () => {
     const target = dnsInput.trim();
     if (!target) return;
     setDnsLoading(true);
+    setError('');
     setDnsTarget(target);
     setDnsRecords({});
 
     const results: Record<string, DNSRecord[]> = {};
+    let hadFailure = false;
     await Promise.all(
       DNS_TYPES.map(async (type) => {
         try {
-          const r = await fetch(`https://dns.google/resolve?name=${encodeURIComponent(target)}&type=${type}`);
+          const r = await request(`https://dns.google/resolve?name=${encodeURIComponent(target)}&type=${type}`);
           const d = await r.json();
           if (d.Answer?.length) {
             results[type] = d.Answer.map((a: { data: string; TTL: number }) => ({
@@ -357,10 +363,13 @@ export const IPIntelligence = () => {
               ttl: a.TTL,
             }));
           }
-        } catch {}
+        } catch (error) {
+          if ((error as Error).name !== 'AbortError') hadFailure = true;
+        }
       })
     );
     setDnsRecords(results);
+    if (hadFailure) setError('Some DNS record lookups failed. Check your connection and retry.');
     setDnsLoading(false);
   };
 
@@ -369,7 +378,7 @@ export const IPIntelligence = () => {
   const handleWhois = async () => {
     if (!ipInfo) return;
     try {
-      const r = await fetch(
+      const r = await request(
         `https://api.allorigins.win/get?url=${encodeURIComponent(`https://rdap.arin.net/registry/ip/${ipInfo.ip}`)}`
       );
       const d = await r.json();
@@ -387,8 +396,11 @@ export const IPIntelligence = () => {
           raw: `Network: ${data.name ?? 'N/A'}\nHandle: ${data.handle ?? 'N/A'}\nStart: ${startAddress}\nEnd: ${endAddress}\nType: ${data.type ?? 'N/A'}\nCountry: ${country}\nOrg: ${orgName}`,
         });
       }
-    } catch {
+    } catch (error) {
       // fallback minimal whois from existing data
+      if ((error as Error).name !== 'AbortError') {
+        setError('WHOIS service is unavailable; showing the available IP details instead.');
+      }
       setWhoisInfo({
         org: ipInfo.org,
         country: ipInfo.country,
@@ -419,7 +431,7 @@ export const IPIntelligence = () => {
     const results: { ip: string; info: IPInfo | null; error?: string }[] = [];
     for (const target of ips) {
       try {
-        const r = await fetch(`https://ipwho.is/${encodeURIComponent(target)}`);
+        const r = await request(`https://ipwho.is/${encodeURIComponent(target)}`);
         const d = await r.json();
         if (!d.success) {
           results.push({ ip: target, info: null, error: d.message || 'Invalid IP' });
@@ -440,7 +452,7 @@ export const IPIntelligence = () => {
             },
           });
         }
-        await new Promise(res => setTimeout(res, 200));
+        await delay(200, getRequestSignal());
       } catch {
         results.push({ ip: target, info: null, error: 'Request failed' });
       }

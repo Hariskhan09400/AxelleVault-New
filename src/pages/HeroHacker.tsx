@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 
 /**
@@ -9,11 +9,21 @@ import { motion, useReducedMotion } from 'framer-motion';
 export function HeroHacker() {
   const reduce = useReducedMotion();
   const [loaded, setLoaded] = useState(false);
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches
+  );
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const onChange = (event: MediaQueryListEvent) => setIsMobile(event.matches);
+    media.addEventListener('change', onChange);
+    return () => media.removeEventListener('change', onChange);
+  }, []);
 
   return (
     <motion.div
       className="mx-auto w-full max-w-[22rem] sm:max-w-md lg:max-w-xl"
-      animate={reduce ? undefined : { y: [0, -6, 0] }}
+      animate={reduce || isMobile ? undefined : { y: [0, -6, 0] }}
       transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
     >
       <picture>

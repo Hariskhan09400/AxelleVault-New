@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase, logToolUsage } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
 import { AlertCircle, CheckCircle, AlertTriangle, Info } from 'lucide-react';
+import { useAbortableFetch } from '../../hooks/useAbortableFetch';
 
 interface SecurityIssue {
   severity: 'critical' | 'warning' | 'info';
@@ -18,6 +19,7 @@ interface HeaderAnalysisResult {
 }
 
 export const HTTPHeaderAnalyzer = () => {
+  const request = useAbortableFetch();
   const { user } = useAuth();
   const [inputMode, setInputMode] = useState<'url' | 'paste'>('paste');
   const [url, setUrl] = useState('');
@@ -212,8 +214,8 @@ export const HTTPHeaderAnalyzer = () => {
     setLoading(true);
 
     try {
-      const res = await fetch(url, { method: 'HEAD', mode: 'no-cors' }).catch(() => 
-        fetch(url, { method: 'GET', mode: 'no-cors' })
+      const res = await request(url, { method: 'HEAD', mode: 'no-cors' }).catch(() =>
+        request(url, { method: 'GET', mode: 'no-cors' })
       );
       
       const h: Record<string, string> = {};

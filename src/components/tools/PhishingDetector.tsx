@@ -3,6 +3,7 @@ import { useState } from "react";
 import { Shield, AlertTriangle, CheckCircle, XCircle } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { useAuth } from "../../hooks/useAuth";
+import { useRequestSignal } from "../../hooks/useAbortableFetch";
 
 // ====================
 // 1. Types & Result
@@ -109,11 +110,6 @@ const extractDetails = (url: string): PhishingResult["details"] => {
   const lower = url.toLowerCase();
   const domainMatch = lower.match(/^(?:https?:\/\/)?(?:[^@\n]+@)?(?:www\.)?([^:/\n]+)/)?.[1] || "";
   const queryIndex = url.indexOf("?");
-
-  const hasHTTPS =
-    url.startsWith("https://") ||
-    (url.startsWith("http://") && !url.startsWith("https://")) ||
-    !url.includes("://");
 
   const queryLength =
     queryIndex !== -1 ? url.slice(queryIndex).length : 0;
@@ -230,6 +226,7 @@ export const PhishingDetector = () => {
   const [url, setUrl] = useState("");
   const [result, setResult] = useState<ReturnType<typeof analyzePhishingURL> | null>(null);
   const [isScanning, setIsScanning] = useState(false); // loading state
+  const getRequestSignal = useRequestSignal();
 
   const handleAnalyze = async () => {
     if (!url || isScanning) return;
@@ -240,7 +237,7 @@ export const PhishingDetector = () => {
       setResult(analysis);
 
       if (user) {
-        await supabase.from("security_logs").insert({
+        const { error } = await supabase.from("security_logs").insert({
           user_id: user.id,
           event_type: "phishing_scan",
           event_data: {
@@ -256,7 +253,8 @@ export const PhishingDetector = () => {
               : analysis.classification === "Suspicious"
               ? "medium"
               : "low",
-        });
+        }).abortSignal(getRequestSignal());
+        if (error) console.error("Phishing scan log failed:", error.message);
       }
     } catch (error) {
       console.error("Phishing scan log failed:", error);

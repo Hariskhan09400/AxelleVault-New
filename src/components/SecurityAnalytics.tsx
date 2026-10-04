@@ -21,32 +21,41 @@ export const SecurityAnalytics = () => {
   });
   const [toolUsageHistory, setToolUsageHistory] = useState<Array<{id:string, tool_name:string, created_at:string}>>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      setLoading(false);
+      return;
+    }
 
-    fetchAnalytics();
+    const controller = new AbortController();
+    setError('');
+    fetchAnalytics(controller.signal);
 
     const channel = supabase
       .channel('public:security_logs')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'security_logs' }, () => {
-        fetchAnalytics();
+        fetchAnalytics(controller.signal);
       })
       .subscribe();
 
     return () => {
+      controller.abort();
       supabase.removeChannel(channel);
     };
   }, [user]);
 
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = async (signal: AbortSignal) => {
     if (!user) return;
 
     try {
-      const { data: logs } = await supabase
+      const { data: logs, error: logsError } = await supabase
         .from('security_logs')
         .select('event_type, risk_level')
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .abortSignal(signal);
+      if (logsError) throw logsError;
 
       if (logs) {
         const totalScans = logs.length;
@@ -65,12 +74,14 @@ export const SecurityAnalytics = () => {
           count,
         }));
 
-        const { data: usageHistory } = await supabase
+        const { data: usageHistory, error: historyError } = await supabase
           .from('tool_usage_history')
           .select('*')
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
-          .limit(10);
+          .limit(10)
+          .abortSignal(signal);
+        if (historyError) throw historyError;
 
         if (usageHistory) setToolUsageHistory(usageHistory as any);
 
@@ -82,7 +93,10 @@ export const SecurityAnalytics = () => {
         });
       }
     } catch (error) {
-      console.error('Error fetching analytics:', error);
+      if (!signal.aborted) {
+        console.error('Error fetching analytics:', error);
+        setError('Analytics could not be loaded. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -105,6 +119,11 @@ export const SecurityAnalytics = () => {
 
   return (
     <div className="space-y-6">
+      {error && (
+        <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-300">
+          {error}
+        </p>
+      )}
       <div className="bg-gray-900/50 backdrop-blur-xl border border-cyan-500/30 rounded-lg p-6 shadow-lg">
         <div className="flex items-center mb-6">
           <BarChart3 className="w-6 h-6 text-cyan-400 mr-3" />

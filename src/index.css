@@ -17,6 +17,12 @@
     --av-shadow: 0 18px 48px rgba(11, 31, 61, 0.08);
   }
 
+  .av-head h1,
+  .av-head h2,
+  .av-label {
+    color: var(--av-text);
+  }
+
   [data-theme='dark'] {
     color-scheme: dark;
     --av-page: #080e1a;
@@ -34,6 +40,7 @@
   body,
   #root {
     @apply min-h-screen;
+    min-height: 100dvh;
     background: var(--av-page);
     color: var(--av-text);
   }
@@ -54,9 +61,34 @@
   .av-shell {
     display: flex;
     min-height: 100vh;
+    min-height: 100dvh;
     flex-direction: column;
     background: var(--av-page);
     color: var(--av-text);
+  }
+
+  @media (max-width: 767px) {
+    .av-card {
+      box-shadow: 0 6px 18px rgba(11, 31, 61, 0.08);
+      transition: border-color 180ms ease, background-color 180ms ease;
+    }
+    .av-bar {
+      -webkit-backdrop-filter: none !important;
+      backdrop-filter: none !important;
+    }
+
+    [class*='backdrop-blur'] {
+      -webkit-backdrop-filter: none !important;
+      backdrop-filter: none !important;
+    }
+
+    [class*='blur-['] {
+      filter: none !important;
+    }
+
+    .animate-glow-pulse {
+      animation: none !important;
+    }
   }
 
   .av-bar {

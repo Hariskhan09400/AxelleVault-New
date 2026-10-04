@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useAbortableFetch } from "../../hooks/useAbortableFetch";
 
 const API_URL = "http://localhost:3001";
 
@@ -16,6 +17,7 @@ const STATE_COLORS = {
 };
 
 export default function PortScanner() {
+  const request = useAbortableFetch();
   const [target, setTarget] = useState("localhost");
   const [ports, setPorts] = useState("1-1024");
   const [scanType, setScanType] = useState("quick");
@@ -30,7 +32,7 @@ export default function PortScanner() {
     setResult(null);
     setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/scan`, {
+      const res = await request(`${API_URL}/scan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ target, ports, scanType }),
@@ -39,7 +41,7 @@ export default function PortScanner() {
       if (!res.ok) throw new Error(data.error || "Scan failed");
       setResult(data);
     } catch (err) {
-      setError(err.message);
+      setError(err instanceof Error ? err.message : "Scan failed");
     } finally {
       setLoading(false);
     }

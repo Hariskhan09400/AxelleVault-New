@@ -18,6 +18,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { supabase, logToolUsage } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import { useAbortableFetch } from '../../hooks/useAbortableFetch';
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -326,19 +327,24 @@ function getStrengthMeta(score: number): { label: string; color: string; barColo
 // Sends only first 5 chars of SHA-1 hash — never the full key
 // ─────────────────────────────────────────────
 
-async function checkHIBP(value: string): Promise<boolean> {
+async function checkHIBP(
+  value: string,
+  request: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+): Promise<boolean> {
   try {
     const hash = await sha1Hex(value);
     const prefix = hash.slice(0, 5);
     const suffix = hash.slice(5);
-    const res = await fetch(`https://api.pwnedpasswords.com/range/${prefix}`, {
+    const res = await request(`https://api.pwnedpasswords.com/range/${prefix}`, {
       headers: { 'Add-Padding': 'true' },
     });
     if (!res.ok) return false;
     const text = await res.text();
     return text.split('\n').some(line => line.split(':')[0] === suffix);
-  } catch {
-    return false;
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error;
+    const message = error instanceof Error ? error.message : 'Network request failed';
+    throw new Error(`Breach check failed: ${message}`);
   }
 }
 
@@ -355,7 +361,11 @@ function maskKey(value: string): string {
 // MAIN: Full Analysis Pipeline
 // ─────────────────────────────────────────────
 
-async function analyzeKey(value: string, checkBreaches: boolean): Promise<AnalysisResult> {
+async function analyzeKey(
+  value: string,
+  checkBreaches: boolean,
+  request: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+): Promise<AnalysisResult> {
   const { entropy, charsetSize, bitsPerChar } = calculateEntropy(value);
   const patterns = detectPatterns(value);
   const format = detectKeyFormat(value);
@@ -375,7 +385,7 @@ async function analyzeKey(value: string, checkBreaches: boolean): Promise<Analys
 
   let breached: boolean | null = null;
   if (checkBreaches) {
-    breached = await checkHIBP(value);
+    breached = await checkHIBP(value, request);
     if (breached) warnings.push('🔥 This exact value appears in known data breach databases');
   }
 
@@ -471,6 +481,7 @@ const ZxcvbnDots = ({ score }: { score: number }) => {
 
 export const APIKeyStrengthChecker = () => {
   const { user } = useAuth();
+  const request = useAbortableFetch();
   const [key, setKey] = useState('');
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [loading, setLoading] = useState(false);
@@ -478,34 +489,35 @@ export const APIKeyStrengthChecker = () => {
   const [doNotStore, setDoNotStore] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [hibpChecking, setHibpChecking] = useState(false);
+  const [error, setError] = useState('');
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Real-time debounced analysis (no HIBP on live — only on button press)
   useEffect(() => {
+    setError('');
     if (!key) { setResult(null); return; }
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(async () => {
       setLoading(true);
-      const r = await analyzeKey(key, false);
+      const r = await analyzeKey(key, false, request);
       setResult(r);
       setLoading(false);
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [key]);
+  }, [key, request]);
 
   // Full analysis with optional HIBP check (on button press)
   const handleEvaluate = useCallback(async () => {
     if (!key) return;
     setLoading(true);
+    setError('');
     if (checkBreaches) setHibpChecking(true);
-    const r = await analyzeKey(key, checkBreaches);
-    setHibpChecking(false);
-    setResult(r);
-    setLoading(false);
+    try {
+      const r = await analyzeKey(key, checkBreaches, request);
+      setResult(r);
 
-    // Supabase logging — NEVER log full key
-    if (user && !doNotStore) {
-      try {
+      // Supabase logging — NEVER log full key
+      if (user && !doNotStore) {
         await logToolUsage(user.id, 'api-key-strength-checker', r.maskedKey, JSON.stringify({
           entropy: r.entropy,
           strength: r.strengthLabel,
@@ -514,7 +526,7 @@ export const APIKeyStrengthChecker = () => {
           patternsFound: r.patterns.detectedPatterns,
           breached: r.breached,
         }));
-        await supabase.from('security_logs').insert({
+        const { error: logError } = await supabase.from('security_logs').insert({
           user_id: user.id,
           event_type: 'apikey_strength_check',
           event_data: {
@@ -526,11 +538,17 @@ export const APIKeyStrengthChecker = () => {
           },
           risk_level: r.riskScore > 70 ? 'high' : r.riskScore > 40 ? 'medium' : 'low',
         });
-      } catch (e) {
-        console.error('[APIKeyChecker] Supabase log failed:', e);
+        if (logError) console.error('[APIKeyChecker] Supabase log failed:', logError.message);
       }
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') {
+        setError((e as Error).message || 'Analysis failed. Please try again.');
+      }
+    } finally {
+      setHibpChecking(false);
+      setLoading(false);
     }
-  }, [key, checkBreaches, doNotStore, user]);
+  }, [key, checkBreaches, doNotStore, user, request]);
 
   const riskColor = result
     ? result.riskScore > 70 ? '#ff2244'
@@ -653,6 +671,11 @@ export const APIKeyStrengthChecker = () => {
       >
         {loading ? '[ ANALYZING... ]' : hibpChecking ? '[ CHECKING BREACHES... ]' : '[ RUN FULL ANALYSIS ]'}
       </button>
+      {error && (
+        <p role="alert" style={{ color: '#ff6677', marginTop: -16, marginBottom: 24, fontSize: 12 }}>
+          {error}
+        </p>
+      )}
 
       {/* Results */}
       {result && (

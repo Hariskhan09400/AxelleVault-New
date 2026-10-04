@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Mail, AlertTriangle, CheckCircle, Search } from 'lucide-react';
 import { supabase, logToolUsage } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
+import { useAbortableFetch, useRequestSignal } from '../../hooks/useAbortableFetch';
 
 interface BreachResult {
   breached: boolean;
@@ -16,21 +17,23 @@ export const EmailBreachChecker = () => {
   const [result, setResult] = useState<BreachResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const request = useAbortableFetch();
+  const getRequestSignal = useRequestSignal();
 
   const checkEmailBreach = async () => {
     if (!email.trim()) return;
 
     setLoading(true);
+    setError('');
+    try {
+      const hibpKey = import.meta.env.VITE_HIBP_API_KEY;
+      let finalResult: BreachResult = {
+        breached: false,
+        breachCount: 0,
+      };
 
-    const hibpKey = import.meta.env.VITE_HIBP_API_KEY;
-    let finalResult: BreachResult = {
-      breached: false,
-      breachCount: 0,
-    };
-
-    if (hibpKey) {
-      try {
-        const res = await fetch(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(email)}?truncateResponse=false`, {
+      if (hibpKey) {
+        const res = await request(`https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(email)}?truncateResponse=false`, {
           headers: {
             'hibp-api-key': hibpKey,
             'Accept': 'application/json',
@@ -52,36 +55,39 @@ export const EmailBreachChecker = () => {
           const text = await res.text();
           throw new Error(`HIBP request failed (${res.status}): ${text}`);
         }
-      } catch (err) {
-        setError((err as Error).message || 'Unable to query breach database');
+      } else {
+        // Fallback when API key is not set
+        const mockBreachedEmails = ['breached@example.com', 'hacked@test.com', 'compromised@demo.com'];
+        const isBreached = mockBreachedEmails.includes(email.toLowerCase());
+        const breachCount = isBreached ? Math.floor(Math.random() * 5) + 1 : 0;
+
+        finalResult = {
+          breached: isBreached,
+          breachCount,
+          lastBreach: isBreached ? '2023-12-15' : undefined,
+          warning: isBreached ? 'This email has been found in data breaches. Consider changing passwords and enabling 2FA.' : undefined,
+        };
       }
-    } else {
-      // Fallback when API key is not set
-      const mockBreachedEmails = ['breached@example.com', 'hacked@test.com', 'compromised@demo.com'];
-      const isBreached = mockBreachedEmails.includes(email.toLowerCase());
-      const breachCount = isBreached ? Math.floor(Math.random() * 5) + 1 : 0;
 
-      finalResult = {
-        breached: isBreached,
-        breachCount,
-        lastBreach: isBreached ? '2023-12-15' : undefined,
-        warning: isBreached ? 'This email has been found in data breaches. Consider changing passwords and enabling 2FA.' : undefined,
-      };
+      setResult(finalResult);
+
+      if (user) {
+        await logToolUsage(user.id, 'email-breach-checker', email, JSON.stringify(finalResult), getRequestSignal());
+        const { error: logError } = await supabase.from('security_logs').insert({
+          user_id: user.id,
+          event_type: 'email_breach_check',
+          event_data: { email: email.toLowerCase(), result: finalResult },
+          risk_level: finalResult.breached ? 'high' : 'low',
+        }).abortSignal(getRequestSignal());
+        if (logError) console.error('[EmailBreachChecker] security log failed:', logError.message);
+      }
+    } catch (err) {
+      if ((err as Error).name !== 'AbortError') {
+        setError((err as Error).message || 'Unable to complete breach check');
+      }
+    } finally {
+      setLoading(false);
     }
-
-    setResult(finalResult);
-
-    if (user) {
-      await logToolUsage(user.id, 'email-breach-checker', email, JSON.stringify(finalResult));
-      await supabase.from('security_logs').insert({
-        user_id: user.id,
-        event_type: 'email_breach_check',
-        event_data: { email: email.toLowerCase(), result: finalResult },
-        risk_level: finalResult.breached ? 'high' : 'low',
-      });
-    }
-
-    setLoading(false);
   };
 
   return (

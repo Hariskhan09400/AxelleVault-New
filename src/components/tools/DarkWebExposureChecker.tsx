@@ -1,5 +1,8 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import "./DarkWebExposureChecker.css";
+import { useAbortableFetch } from "../../hooks/useAbortableFetch";
+import { useRequestSignal } from "../../hooks/useAbortableFetch";
+import { delay } from "../../lib/network";
 
 // ─────────────────────────────────────────────
 // TYPES
@@ -130,7 +133,10 @@ function generateSuggestions(breaches: BreachRecord[]): string[] {
 // ─────────────────────────────────────────────
 const HIBP_API_KEY = "YOUR_HIBP_API_KEY_HERE"; // Replace with actual key
 
-async function checkEmailBreaches(email: string): Promise<BreachRecord[]> {
+async function checkEmailBreaches(
+  email: string,
+  request: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>,
+): Promise<BreachRecord[]> {
   // k-Anonymity: Only send first 5 chars of SHA-1 hash
   const hash = await sha1(email);
   const prefix = hash.slice(0, 5);
@@ -142,7 +148,7 @@ async function checkEmailBreaches(email: string): Promise<BreachRecord[]> {
   // The k-anonymity model is used for password checks (not shown here).
   // This is the production-correct approach per HIBP documentation.
 
-  const response = await fetch(
+  const response = await request(
     `https://haveibeenpwned.com/api/v3/breachedaccount/${encodeURIComponent(email)}?truncateResponse=false`,
     {
       headers: {
@@ -177,6 +183,9 @@ function useDebounce<T extends (...args: Parameters<T>) => void>(
   delay: number
 ): T {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
   return useCallback(
     ((...args: Parameters<T>) => {
       if (timer.current) clearTimeout(timer.current);
@@ -312,6 +321,8 @@ function ScanProgress({ phase }: { phase: number }) {
 // MAIN COMPONENT
 // ─────────────────────────────────────────────
 export default function DarkWebExposureChecker() {
+  const request = useAbortableFetch();
+  const getRequestSignal = useRequestSignal();
   const [inputType, setInputType] = useState<"email" | "username">("email");
   const [inputValue, setInputValue] = useState("");
   const [isScanning, setIsScanning] = useState(false);
@@ -321,6 +332,7 @@ export default function DarkWebExposureChecker() {
   const [privateMode, setPrivateMode] = useState(false);
   const [lastScanTime, setLastScanTime] = useState<number>(0);
   const RATE_LIMIT_MS = 10_000; // 10 second cooldown
+
 
   const handleScan = useCallback(async () => {
     const trimmed = inputValue.trim();
@@ -346,10 +358,11 @@ export default function DarkWebExposureChecker() {
     setLastScanTime(now);
 
     try {
+      const signal = getRequestSignal();
       // Simulate phase progression
       for (let i = 0; i < 5; i++) {
         setScanPhase(i);
-        await new Promise((r) => setTimeout(r, 400));
+        await delay(400, signal);
       }
 
       const masked = maskInput(trimmed);
@@ -358,18 +371,18 @@ export default function DarkWebExposureChecker() {
 
       if (HIBP_API_KEY === "YOUR_HIBP_API_KEY_HERE") {
         // Demo mode: realistic mock data when no API key configured
-        await new Promise((r) => setTimeout(r, 800));
+        await delay(800, signal);
         breaches =
           trimmed.toLowerCase().includes("test") ||
           trimmed.toLowerCase().includes("demo")
             ? MOCK_BREACHES
             : [];
       } else {
-        breaches = await checkEmailBreaches(trimmed);
+        breaches = await checkEmailBreaches(trimmed, request);
       }
 
       setScanPhase(5);
-      await new Promise((r) => setTimeout(r, 300));
+      await delay(300, signal);
 
       const { level, score } = calculateRisk(breaches);
       const suggestions = generateSuggestions(breaches);
@@ -399,7 +412,7 @@ export default function DarkWebExposureChecker() {
       setIsScanning(false);
       setScanPhase(0);
     }
-  }, [inputValue, inputType, lastScanTime, privateMode]);
+  }, [inputValue, inputType, lastScanTime, privateMode, request]);
 
   const debouncedScan = useDebounce(handleScan, 300);
 
