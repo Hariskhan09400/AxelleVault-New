@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import { LogOut, Bookmark } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
+import { useToast } from '../contexts/ToastContext';
 
 interface LogoutConfirmModalProps {
   isOpen: boolean;
@@ -10,6 +11,7 @@ interface LogoutConfirmModalProps {
 
 export const LogoutConfirmModal = ({ isOpen, onClose }: LogoutConfirmModalProps) => {
   const { signOut } = useAuth();
+  const { showToast } = useToast();
   const [busy, setBusy] = useState(false);
   const reduceMotion = useReducedMotion();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -54,8 +56,10 @@ export const LogoutConfirmModal = ({ isOpen, onClose }: LogoutConfirmModalProps)
     setBusy(true);
     try {
       await signOut({ rememberLogin });
+      showToast('success', rememberLogin ? 'Logged out. Your email was saved for next time.' : 'Logged out successfully.');
     } catch (error) {
       console.error('[LogoutConfirmModal] signOut failed:', error);
+      showToast('error', 'Could not log out completely. Please try again.');
     } finally {
       setBusy(false);
       onClose();
@@ -66,7 +70,7 @@ export const LogoutConfirmModal = ({ isOpen, onClose }: LogoutConfirmModalProps)
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 px-4 py-6 backdrop-blur-sm"
+          className="fixed inset-0 z-[100] flex items-end justify-center overflow-y-auto bg-black/50 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center sm:px-4 sm:py-6 sm:backdrop-blur-sm"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -81,7 +85,7 @@ export const LogoutConfirmModal = ({ isOpen, onClose }: LogoutConfirmModalProps)
         aria-modal="true"
         aria-labelledby="logout-confirm-title"
         aria-describedby="logout-confirm-description"
-        className="w-full max-w-sm rounded-2xl border border-[#e4ddc9] bg-white p-6 shadow-xl sm:p-8"
+        className="my-auto max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1.5rem)] w-full max-w-sm overflow-y-auto rounded-2xl border border-[#e4ddc9] bg-white p-5 shadow-xl sm:p-8"
         initial={{ opacity: 0, y: reduceMotion ? 0 : 12, scale: reduceMotion ? 1 : 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: reduceMotion ? 0 : 8, scale: reduceMotion ? 1 : 0.99 }}
